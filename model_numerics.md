@@ -66,3 +66,9 @@ With vertical velocities of the order of 5hPa/day the error in the vertical posi
 This of course says nothing about the accuracy or performance of the model when analysed wind fields are used. In this 
 case the errors in the diagnosed vertical winds are likely to dominate the numerical errors of the model.
 
+![xxx][id]
+
+![yyy][id2]
+
+[id]: sol_rot_tc.gif "Title"
+[id2]: sol_rot_tv.gif "Title2"
