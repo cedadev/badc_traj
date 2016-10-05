@@ -40,6 +40,8 @@ has an even smaller error. This is simply a consequnce of the fact that the parc
 planes and never has an E-W component of wind. This parcel goes over the pole, with no noticable extra error. 
 This is simply a consequence of the Cartesian formulation of the model.
 
+![][1]
+
 This solid body rotation test gives a base line for the errors of the scheme. The errors in this case are due to the space 
 interpolation of winds and the time scheme. The velocities are constant and so there are no errors 
 associated with the time interpolation.
@@ -59,6 +61,8 @@ where `omega` is the rotation rate, `t` is time, and `a=b=2pi/2.5` per day, `c=2
 than in the case with constant rotation rate. By 10 days the parcel initially at 30N,30E has an error of almost 0.9 degrees. 
 This, however, is still quite small and acceptable over the 10 days that the model has been run for.
 
+![][2]
+
 ### Vertical advection
 
 Tests have been performed using both constant vertical advection and vertical advection varying linearly in the vertical. 
@@ -66,9 +70,5 @@ With vertical velocities of the order of 5hPa/day the error in the vertical posi
 This of course says nothing about the accuracy or performance of the model when analysed wind fields are used. In this 
 case the errors in the diagnosed vertical winds are likely to dominate the numerical errors of the model.
 
-![xxx][id]
-
-![yyy][id2]
-
-[id]: sol_rot_tc.gif "Title"
-[id2]: sol_rot_tv.gif "Title2"
+[1]: sol_rot_tc.gif "Solid body rotation errors, time constant rotation rate"
+[2]: sol_rot_tv.gif "Solid body rotation errors, time varying rotation rate"
