@@ -108,26 +108,26 @@ taken from Gaines and Hipskind.
 `DX(2)=1.0` - The trajectory index will always increment by one   
 `XNAME(1)=Time (seconds) from 00 on start date` - The name of the most rapidly varying dimension. 
 In this case time from midnight on the start date. This leads to non-zero initial times, 
-for trajectory integrations that start at any other time, e.g. 12UT.
+for trajectory integrations that start at any other time, e.g. 12UT.   
 `XNAME(2)=Trajectory Index` - The name of the second independant (dimension) variable. In this case it is 
-simply the index of the trajectory in the file. Trajectories are labeled by indices 1, 2, 3, etc.  
-`NV=3` - The number of primary dependant variables
-`VSCALE(1) VSCALE(2) VSCALE(3)=1.0 1.0 1.0` - Scale factors for each of the dependent variables.
+simply the index of the trajectory in the file. Trajectories are labeled by indices 1, 2, 3, etc.     
+`NV=3` - The number of primary dependant variables   
+`VSCALE(1) VSCALE(2) VSCALE(3)=1.0 1.0 1.0` - Scale factors for each of the dependent variables.   
 `VMISS(1) VMISS(2) VMISS(3)=999.99 999.99 9999.99` - Values for undefines/missing data points 
-for each of the dependent variables.
-`VNAME(1)=Latitude (degrees North)` - Name of the first dependent variable.
-`VNAME(2)=Longitude (degrees East)` - Name of the first dependent variable.
-`VNAME(3)=Pressure (hPa)` - Name of the first dependent variable.
-`NAUXV=1` - Number of auxillary variables.
-`ASCALE(1)=1.0` - Scale factor for the auxillary variable
-`AMISS(1)=9999.99` - Values for undefines/missing data points for each of the auxillary variables.
+for each of the dependent variables.   
+`VNAME(1)=Latitude (degrees North)` - Name of the first dependent variable.   
+`VNAME(2)=Longitude (degrees East)` - Name of the first dependent variable.   
+`VNAME(3)=Pressure (hPa)` - Name of the first dependent variable.   
+`NAUXV=1` - Number of auxillary variables.   
+`ASCALE(1)=1.0` - Scale factor for the auxillary variable   
+`AMISS(1)=9999.99` - Values for undefines/missing data points for each of the auxillary variables.   
 `ANAME(1)=Number of output times along trajectory` - For the 2110 format there is always one auxillary
 variable which gives information on the length of the most rapidly varying dimension. In this case 
-this is the number of output times along the trajectory.
+this is the number of output times along the trajectory.   
 `NSCOML=0` - In the current, minimalist, implementation of the NASA Ames format for the trajectory 
-files there are no special comments. This will change.
+files there are no special comments. This will change.   
 `NNCOML=0` - In the current, minimalist, implementation of the NASA Ames format for the trajectory 
-files there are no normal comments. This will change.
+files there are no normal comments. This will change.   
 
 Data Records:
 Each data record begins with the trajectory index, followed by the number of output times for this trajectory. 
