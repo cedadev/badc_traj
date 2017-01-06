@@ -1,0 +1,45 @@
+#!/usr/bin/perl 
+
+use English;
+my $IDL="/usr/local/rsi/idl/bin/idl";
+my $install_dir="@@INSTALL_DIR@@";
+my $IDL_CODE="/var/www/badc_site/cgi-bin/idl";
+my $IDL_STARTUP="$IDL_CODE/idl_startup.pro";
+my $IDL_BATCH="$install_dir/plot.idl";
+
+my $LOG="/tmp/trajectory/.logs/plot.log";
+my $LOG_FORMAT="/tmp/plot%d.log";
+
+$ENV{"PATH"}="/bin";
+$ENV{"IDL_STARTUP"}=$IDL_STARTUP;
+$ENV{"IDL_CODE_DIR"}=$IDL_CODE;
+
+
+my $group=getgrnam('byacl');  # need this get plotting working
+
+$GID=$group;
+$EGID=$group;
+
+my $log=sprintf($LOG_FORMAT,$$);
+print qx($IDL $IDL_BATCH 2> $log\n);
+
+if ($?) {
+    qx(cat $log >> $LOG);
+}
+
+unlink($log);
+close(OUT);
+exit 0;
+
+sub message {
+    my $mess=shift;
+    my $date=date();
+    print OUT "[$date] $$ :$mess";
+}
+
+sub date {
+    my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdat)=gmtime(time);
+    my $yy=1900+$year;
+    my $month=$mon+1;
+    return "$yy-$month-$mday:$hour-$min-$sec";
+}

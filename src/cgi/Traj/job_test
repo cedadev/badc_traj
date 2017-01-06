@@ -1,0 +1,22 @@
+#!/usr/local/perl -w
+#
+use strict;
+
+use Job;
+
+my %options=(
+             date=>'19990101', 
+             hour=>'00',
+             days=>'1',
+             direction=>'forward',
+             source=>'ecmwf_2.5p',
+             lon=>'0',
+             lat=>'50',
+             lev=>'50'
+            );
+
+Job::submit_job('jkettleb','J.A.Kettleborough@rl.ac.uk',\%options);
+
+exit;
+
+            

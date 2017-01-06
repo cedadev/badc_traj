@@ -1,0 +1,5 @@
+model sub directory of trajectory code
+
+advect.pro - main idl procedure for running trajectorys.
+ini_traj - perl script for trajectory initialisation.
+traj.pl - command line based perl wrapper to call advect.pro

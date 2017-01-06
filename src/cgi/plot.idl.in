@@ -1,0 +1,9 @@
+;
+
+!PATH = !PATH + ':/var/www/badc_site/cgi-bin/idl'
+.comp find_var
+.comp make_limits
+.comp '@@INSTALL_DIR@@/idl/plot_traj_cgi.pro'
+.comp '@@INSTALL_DIR@@/idl/plot_traj.pro'
+plot_traj_cgi
+exit

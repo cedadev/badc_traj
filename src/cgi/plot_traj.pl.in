@@ -1,0 +1,488 @@
+#!/usr/bin/perl
+#
+# Purpose:  Control the plotting of trajectories
+# Method:   There are two main forms.
+#           One deals with requesting the plot type and the
+#           trajectories to be plotted.
+#           The other displays the plot.
+# Comments: Write a postscript file too
+#           Add a download button somewhere for netcdf
+#           might have to reset defaults on the hidden variables
+# Author:   JAK Feb 1999 BADC
+#           ASH 21-Oct-2004 Added Setup definitions
+#
+
+#    print "Content-Type: text/plain\n\n";
+   
+use lib (".");
+use BADCLOCAL::Paths;
+use lib "$BADCLOCAL::Paths::PERLLIB";
+use lib "$BADCLOCAL::Paths::LOCAL_PERLLIB";
+use BADC::LocalDefs;
+use BADC::Setup;
+
+use NDG::Security::Client;
+use NDG::Security::Weblogon;
+  
+use Traj::FilePath qw (find_in_path);
+use Traj::Pages qw ($badc_support $help_plot $traj_top);
+use CGI;
+use NetCDF;
+
+$ENV{'PATH'}="/usr/bin";  # needed for idl call and taint checking
+$CGI_PATH="@@CGI_DIR@@";  # path for cgi scripts
+
+#$< = (getpwnam("badc"))[2]; 
+
+CGI::ReadParse();
+$group='traj';
+
+
+NDG::Security::Weblogon::weblogon(mustLogin=>"y");
+my @roles = NDG::Security::Weblogon::roles();
+$user = NDG::Security::Weblogon::username();
+
+if (grep /^${group}$/, @roles) {
+    plot_traj_form();
+}
+exit 0;
+
+sub plot_traj_form {
+#
+# Initialisation - set errors and default path
+
+$ENV{'PATH'}="/usr/bin";  # needed for idl call and taint checking
+NetCDF::opts(0);          # deal with NetCDF errors internally
+$base="/cache/trajectory";
+$path="$base/$user:/badc/ecmwf-trj/data:/";
+
+$form=$in{CGI};
+$file=$form->path_info();
+
+#
+# check files existance # tidy this up!
+if ( $file=~m!^(/[\w/\-]+\.nc)$! ) {   #too restrictive?
+    $file=$1;
+    $full_file=find_in_path($file,$path);
+} else {
+    print "Location: $CGI_PATH/find_file\n\n";
+    exit 0;    # do the actions defined by find_file
+}
+unless ( -r $full_file ) {
+    &print_head;
+    &error ("Could not open the file $full_file","Fatal")
+}
+#
+
+
+#
+# Process the form
+
+($ncid=NetCDF::open($full_file,NetCDF::NOWRITE)) == -1 and
+&error ("opening netcdf file $file", "Fatal"); # open file etc first
+          $ncid=~/(\d+)/ and $ncid=$1;
+%plots=&plot_types();
+%trajs=&traj();
+%Markers=&marker();
+
+if (&old_form){
+    if (&read_plot_form) {
+      &make_plot;
+      &plot_traj or &print_errors;
+    } else {
+      &print_head;
+      &print_errors;
+    }
+    &print_plot_form;
+    &print_tail;
+} else {
+    &print_head;
+    &print_plot_form;
+    &print_tail;
+}
+
+return;
+}
+
+#
+# simple error handling routine either adds error to error list
+# or writes an error and terminates
+sub error{
+    if ($#_ > 0) {
+        print "$_[1] Error: $_[0]\n";
+        print $form->end_html."\n";
+        exit (1); 
+    } else {
+        push @error, "Error: $_[0]\n";
+    }
+    return undef;
+}
+
+#
+# Print the error messages
+sub print_errors {
+    print "<H2>Errors processing form</H2>\n";
+    foreach $err (@error) {
+        print "$err<BR>\n";
+    }
+    print "<HR>\n";
+    return
+}
+
+#
+# Determine whether the form is required
+sub old_form {
+    my $yes="";
+    $yes=$form->param('.old_form');
+    return $yes;
+}
+
+#
+# sub print_head
+# Purpose: Print the header for the trajectory page
+sub print_head {
+    $javascript=<<END;
+var help_win;
+    
+function help(url) {
+  help_win=window.open(url,"help_window",
+          "scrollbars,resizable,height=200,width=500");
+  help_win.focus();
+  return false;
+}
+END
+    print $form->header;
+    print $form->start_html(-title=>"BADC Trajectories - Plotting",
+			    -style=>
+			    {-src=>"/community/trajectory/style.css"},
+                            -script=>$javascript,
+                            -onUnload=>"if (help_win != null) help_win.close();")."\n";
+    print qq(<H1><IMG SRC="/graphics/logos/badc_small_logo.gif" WIDTH="150" HEIGHT="60"
+	     ALIGN="RIGHT" ALT="BADC Logo" BORDER="0">Atmospheric Trajectories<BR clear=all></H1>\n <HR>\n);
+}
+
+#
+# sub print_tail
+# Purpose: print the tail of a document
+sub print_tail {
+    print qq(<A HREF="$traj_top">Back</A> to main trajectory page<BR>\n);
+    print "<HR>\n";
+    print qq(<EM>Please report any problems with this page to:</EM>
+<ADDRESS><A HREF="$badc_support">
+BADC Support</A>\n);
+print $form->end_html."\n";
+
+}
+
+#
+# Returns a list of trajectory initial conditions
+sub traj{
+    my ($j, $ipar) = (0,0);
+    my @lon=(0.);
+    my @lat=(0.);
+    my @lev=(0.);
+    my $lev_scale=1.;
+    my $cdum="";
+    -1==NetCDF::diminq($ncid,NetCDF::dimid($ncid,"parcel"),$cdum,\$ipar) and
+        &error ("dimension parcel not found","Fatal");
+    -1==NetCDF::varget($ncid,NetCDF::varid($ncid,"lon"),[0,0],[1,$ipar],\@lon)
+        and &error ("retrieving longitude","Fatal");
+    -1==NetCDF::varget($ncid,NetCDF::varid($ncid,"lat"),[0,0],[1,$ipar],\@lat)
+        and &error ("retrieving latitude","Fatal");
+    -1==NetCDF::varget($ncid,NetCDF::varid($ncid,"lev"),[0,0],[1,$ipar],\@lev)
+        and &error ("retrieving level","Fatal");
+    my $lev_units=0;
+    -1==NetCDF::attget($ncid,NetCDF::varid($ncid,"lev"),"units",\$lev_units) 
+        and &error("getting units for level");
+    $lev_units=lc($lev_units);
+    $lev_units =~/^pa/ and $lev_scale=0.01 ;
+    for ($j=0 ; $j<$ipar ; $j++) {
+        $lon[$j]=~s/([-\d.]+)/$1/ or 
+                   &error("Invalid longitude in input","Fatal");
+        $lat[$j]=~s/([-\d.]+)/$1/ or 
+                   &error("Invalid latitude in input","Fatal");
+        $lev[$j]=~s/([-\d.]+)/$1/ or 
+                   &error("Invalid level in input","Fatal");				  
+        $trajs{"$j"}=sprintf "(%6.2f,%7.2f,%5.1f)", 
+                              $lon[$j],$lat[$j],$lev[$j]*$lev_scale;
+    }
+    return %trajs;
+}
+
+#
+# Determine the plot types possible from the variables present
+sub plot_types {
+    my ($cname, $cdims, $clong, $j)=("","","",0);
+    my ($itype, $idims, $iatts, $ivars, $irecdim, $ilen);
+    my @idim;
+    my $ierr=0;
+
+    -1==NetCDF::inquire($ncid,$idims,$ivars,$iatts,$irecdim) and
+          &error("inquiring netcdf","Fatal");
+
+    for ($j=0 ; $j<$idims ; $j++) {
+        -1==NetCDF::diminq($ncid,$j,$cname,$ilen) and
+            &error("inquiring dimension $j","Fatal");
+        $cdims.=$cname; 
+    }
+    unless ($cdims =~ m/parc/) {
+        &error("no parcel dimension");
+        $ierr++;
+    }
+    unless ($cdims =~ m/time/) {
+        &error("no time dimension");
+        $ierr++;
+    }
+    for ($j=0 ; $j<$ivars ; $j++) {
+        -1==NetCDF::varinq($ncid,$j,$cname,$itype,$idims,\@idim,$iatts) and
+            &error("inquiring dimension $j","Fatal");
+        -1==NetCDF::attget($ncid,$j,"long_name",\$clong) and 
+            &error("getting long_name attribute for $cname");
+        $cname =~ s/(lat)/01$1/;          # determine order appear in list
+        $cname =~ s/(lon)/02$1/;
+        $cname =~ s/(lev)/03$1/;
+        $clong =~ s/(^[\w.\s()]+)\0?$/$1/ or 
+                    &error ("invalid contents in input file","Fatal");
+        $plots{$cname}="\u${clong}-Time";
+    }
+    unless (exists $plots{"02lon"}) {
+        &error("longitude not present in netcdf file");
+        $ierr++;
+    }
+    unless (exists $plots{"01lat"}) {
+        &error("latitude not present in netcdf file");
+        $ierr++;
+    }
+    unless ( exists $plots{"03lev"}) {
+        &error("level not present in netcdf file");
+        $ierr++;
+    }
+    delete $plots{"time"};   # not needed as plot description
+    $plots{"00map"}="Lat-Lon Map";
+    return $ierr == 0 ? %plots : undef
+}
+
+sub marker {
+    @time=();
+    -1==NetCDF::varget($ncid,NetCDF::varid($ncid,"time"),[0],[2],\@time)
+        and &error ("retrieving time","Fatal");
+    my $dt_out=abs($time[1]-$time[0]);
+    foreach $marker (3600,10800,21600,43200,86400) {
+	if ($marker%$dt_out < 1.e-4) {
+	    $mark_menu{int ($marker/$dt_out)}=$marker/3600;
+	}
+    }
+    return %mark_menu;
+}
+
+#
+# Print the main form requesting trajectory plots
+sub print_plot_form {
+    my $filep;
+    ($filep=$file) =~ s!^/(.*)$!$1!;
+    @types=sort (keys %plots);
+    @traj=sort {$a <=> $b} (keys %trajs);
+    print "<H2> Plotting file $filep</H2>";
+    print qq(<A HREF="$help_plot"
+                onClick="return help('$help_plot');">Help
+             </A> on plotting trajectories<BR>\n);
+    print "<A HREF=$CGI_PATH/nc2www/$filep>Download</A> NetCDF file (binary based format)<BR>\n";
+    print "<A HREF=$CGI_PATH/nc2nasa/$filep>View</A> NASA Ames file (ASCII based format)\n";
+#    print $form->startform(-action=>"$CGI_PATH/plot_traj/$filep")
+#           ,"\n";
+    print "<FORM method=\"post\" ACTION=\"$CGI_PATH/plot_traj/$file\">\n";
+    print "<TABLE BORDER=0 CELLSPACING=5>\n";
+    print qq(<TR><TH></TH><TH BGCOLOR=#FFFFFF><A HREF="$help_plot#limits"
+   onClick="return help('$help_plot#limits');">
+Plot Limits</A></TH></TR>\n);
+    print "<TR><TD>\n";
+    print "<TABLE border=0 cellspacing=0 cellpadding=4>\n";
+    print qq(<TR><TD><A HREF="$help_plot#type"
+              onClick="return help('$help_plot#type');">Plot type</A>: </TD><TD>),
+        $form->scrolling_list(-name=>"plot_type",
+                              -values=>\@types,
+                              -size=>4,
+                              -multiple=>"true",
+                              -labels=>\%plots,
+                              -defaults=>"");
+
+    print "</TD></TR>\n";
+    if (@traj == 1) {
+	@default=@traj;
+    }
+    print qq(<TR><TD><A HREF="$help_plot#initial"
+   onClick="return help('$help_plot#initial');">
+Trajectory initial</A><BR> conditions<BR> (lon,lat,lev): </TD><TD>),
+        $form->scrolling_list(-name=>"traj",
+                              -values=>\@traj,
+                              -size=>4,
+                              -multiple=>"true",
+                              -labels=>\%trajs,
+                              -defaults=>@default);
+    print "</TD></TR>\n";
+    if (%Markers) {
+        @markers=sort {$a <=> $b} keys %Markers;
+	print qq(<TR><TD><A HREF="$help_plot#markers"
+   onClick="return help('$help_plot#markers');">Markers:</A></TD><TD>);
+	print $form->checkbox(-name=>'markers',
+                              -label=>'On/Off');
+        print "</TD><TD> Frequency (hours):</TD><TD>";
+        print $form->scrolling_list(-name=>'mark_freq',
+                                    -values=>\@markers,
+                                    -labels=>\%Markers,
+                                    -default=>$markers[0],
+                                    -size=>1);
+        print "</TD></TR>\n";
+    }
+    print qq(<TR><TD><A HREF="$help_plot#output"
+   onClick="return help('$help_plot#output');">
+        Output to:</A></TD>\n);
+    print "<TD>", $form->popup_menu(-name=>"output",
+                                   -values=>["Browser","Postscript"],
+                                   -default=>"Browser");
+    print "</TD></TR>\n";
+    print "</TABLE>\n";
+    print "</TD><TD>\n";
+   
+
+    print "<TABLE border=0 cellspacing=0 cellpadding=4>\n";
+    print "<TR><TD>Variable</TD><TD>Minimum</TD><TD>Maximum</TD></TR>\n";
+    my ($var,@vars);
+    @vars=plots2vars(\%plots);
+    foreach $var (@vars){
+      ($label=$plots{$var})=~ s/-Time//; # long name stored in plots not vars
+      print "<TR><TD>\u$label</TD><TD>";
+      print $form->textfield(-name=>"${var}_min",-size=>6);
+      print "</TD><TD>";
+      print $form->textfield(-name=>"${var}_max",-size=>6);
+      print "</TD></TR>\n";
+    }
+    print "</TABLE>\n";
+    print "Note: Limits do not have to be given, defaults will be chosen",
+          " for empty fields\n";
+    print "</TD></TR>\n";
+    print "</TABLE>\n";
+    print $form->submit(-value=>"Plot"),"\n";
+    print $form->reset(),"\n";
+    print $form->hidden(-name=>'plot_keys',
+                        -default=>[keys %plots]), "\n";
+    print $form->hidden(-name=>'plot_values',
+                        -default=>[values %plots]), "\n";
+    print $form->hidden(-name=>'traj_keys',
+                        -default=>[keys %trajs]), "\n";
+    print $form->hidden(-name=>'traj_values',
+                        -default=>[values %trajs]), "\n";
+    print $form->hidden(-name=>'.old_form',
+                        -default=>'yes');
+    print $form->endform,"\n";
+}
+
+#
+# Read the form data and test for presence of all entries
+sub read_plot_form {
+    my $ierr=0;
+    @plot=$form->param("plot_type");
+    unless (@plot) {
+        &error ("No plot type chosen");
+        $ierr++;
+    }
+    @traj=$form->param("traj");
+    unless (@traj) {
+        &error ("No trajectories chosen");
+        $ierr++;
+    }
+    @plot_keys=$form->param('plot_keys');
+    @plot_values=$form->param('plot_values');
+    for ( $j=0 ; $j<@plot_keys ; $j++ ) {
+        $plots{$plot_keys[$j]}=$plot_values[$j];
+    }
+    @traj_keys=$form->param('traj_keys');
+    @traj_values=$form->param('traj_values');
+    for ( $j=0 ; $j<@traj_keys ; $j++ ) {
+        $trajs{$traj_keys[$j]}=$traj_values[$j];
+    }
+    my $var;
+    @vars=plots2vars(\%plots);
+    foreach $var (@vars) {
+        ${$var."_min"}=$form->param("${var}_min"); # will symbolic refs work
+        ${$var."_max"}=$form->param("${var}_max"); # with use strict?
+    }
+    $output=$form->param("output");
+    $marker=$form->param("markers");
+    if ($marker eq 'on') {
+       $markers=$form->param("mark_freq");
+    }
+    return $ierr==0;
+}
+
+#
+# Call idl to make the plot as a gif file and ps file?
+sub make_plot {
+    my ($types, $vars, $trajs, $min, $max);
+    foreach $type (@plot){
+        $type =~ s/\d\d//;
+    }
+    $types=join ',', @plot;
+    $types=~s/(\W)/sprintf("%%%x",ord($1))/eg;
+    $vars=join ',', @vars;
+    $vars =~ s/\d\d//g;
+    $vars=~s/(\W)/sprintf("%%%x",ord($1))/eg;
+    $trajs=join ',', @traj;
+    $trajs=~s/(\W)/sprintf("%%%x",ord($1))/eg;
+    $plot_src="$CGI_PATH/plot$full_file?";
+    $plot_src.="types=$types";
+    $plot_src.="&trajs=$trajs";
+    $plot_src.="&vars=$vars";
+    foreach my $var (@vars) {
+	($name=$var) =~ s/\d\d//;
+        if (${$var."_min"}) {
+	  ($min=${$var."_min"})=~s/(\W)/sprintf("%%%x",ord($1))/eg;
+	   $plot_src.="&${name}min=$min";
+	}
+        if (${$var."_max"}) {
+            ($max=${$var."_max"})=~s/(\W)/sprintf("%%%x",ord($1))/eg;
+	    $plot_src.="&${name}max=$max";
+	}
+    }
+    if ($markers) {$plot_src.="&markers=$markers"};
+}
+
+#
+# Determine which variables are needed from the plot types
+sub plots2vars {
+    my $rplots=shift;
+    my %plot=%$rplots;
+    if (exists $plot{"00map"}) {
+      delete $plot{"00map"};
+      $plot{"01lat"}="";
+      $plot{"02lon"}="";
+    }
+    @vars=sort (keys %plot);
+    return @vars;
+}
+
+#
+# print the page with the trajectory plot on it
+sub plot_traj {
+    if ($output eq 'Postscript') {
+	print "Location: $plot_src&ps=yes\n\n";
+    } else {
+        &print_head;
+	print qq/<IMG SRC="$plot_src", ALT="Trajectory Plot", ALIGN="middle">\n/;
+	print "<HR>\n";
+    }
+    return 1;
+}
+
+
+
+
+
+
+
+
+
+
+
+
+

@@ -1,0 +1,19 @@
+Support Modules for the WWW based trajectory service
+
+Check.pm      - module that performs checks on the form variables
+ECMWF1125MF.pm - for ECMWF 1.125 degree Model level forecast data
+ECMWF1125M.pm  - for ECMWF 1.125 degree model level data
+ECMWF25PE4T.pm - for ERA 40 2.5 degree pressure level data
+ECMWF25MF.pm  - module defining class that provides checks for ECMWF,
+                2.5 degree model level forecast data
+ECMWF25P.pm   - module defining class that provides checks for ECMWF
+                2.5 degree pressure level data
+FilePath.pm   - provides a function that looks for a file in a set of
+                paths
+File_type.pm  - module providing base class for file type checing
+Job.pm        - module that creates and submits the job
+Logrun.pm     - module providing logging functions
+Message.pm    - Warning and error message handling for the trajectory interface
+Pages.pm      - some configuration information
+RequestDir.pm - make a users request directory
+UKMO_GS.pm    - UKMO global model on standard levels (not used?)

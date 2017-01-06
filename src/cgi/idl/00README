@@ -1,0 +1,6 @@
+Plotting routines directory
+
+plot_traj_cgi.pro  - CGI interface to plotting (refered to from html
+                     using an IMG tag)
+plot_traj_ex       - idl batch program to test plot_traj.pro
+plot_traj.pro      - main idl plotting procedures

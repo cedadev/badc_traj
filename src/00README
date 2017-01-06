@@ -1,0 +1,14 @@
+Top level of the trajectory model code
+
+cgi - contains cgi for running the trajectories and plotting them when complete
+docs - documentation for the trajectory model
+model - contains code to run trajectory model, initialise trajectory model.
+notes - notes on progress etc
+
+NOTE - THIS IS VERY IMPORTANT
+
+version on 17th August 2005 is a copy of the working copy from mercury
+and foehn.  These should be tested with an install procedure (to dummy
+locations) to check they are the correct copies.  Note the model needs
+installing into directories visible on mercury, while the interface
+needs installing in directories visible on foehn

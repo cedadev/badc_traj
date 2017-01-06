@@ -1,0 +1,4 @@
+!PATH=!PATH+':/webserver/apache/cgi-bin/idl/'
+.comp plot_traj
+file='./tt1999030506.nc'
+plot_traj, file, ['map','lev'], [0], markers=1, /no_color, output='gifstdo'

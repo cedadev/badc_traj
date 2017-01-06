@@ -1,0 +1,242 @@
+\documentclass[a4paper]{article}
+
+\usepackage{epsfig}
+
+\title{Trajectory Model Interface}
+\author{Jamie Kettleorough}
+
+\oddsidemargin -0.5in
+\evensidemargin -0.5in
+\topmargin -0.5in
+\textwidth 7.2in
+\textheight 10.in
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+
+Trajectory model is simple parcel advection written at BADC.  The
+parcel advection is performed by IDL.  The WWW based interface is
+written in Perl.  This doc deals with the interface.
+
+\section{setuid}
+
+The interface is run under the WWW server which will usually be run as
+a user with low privileges (e.g. webuser).  The trajectory service has
+to access files owned by badc and with different group permissions.
+To enable this the WWW based forms have to run as setuid/setgid
+programs.  IDL licensing detects when the real and effective user id's
+are different, so have to setuid root and then change both to badc.
+
+There is a race condition which means that Perl scripts cannot be run
+as setuid and so they all have to be wrappered in a c program.  This
+means all form processing CGI that requires setuid have three files
+associated with them.
+
+\begin{itemize}
+\item Perl source
+\item c wrapper source
+\item executable
+\end{itemize}
+(In what follows the Perl source files will be used to refer to the
+setuid CGI form processing).
+
+Setuid bits are as follows
+\begin{verbatim}
+-rwsr-sr-x    1 root     badcint     11709 Nov  7  2003 find_file
+-rwsr-sr-x    1 root     badcint     11803 Nov  7  2003 nc2nasa
+-rwsr-sr-x    1 root     badcint     11802 Nov  7  2003 nc2www
+-rwsr-sr-x    1 root     byacl       11696 Nov  7  2003 plot
+-rwsr-sr-x    1 root     ecmwftrj    11709 Nov  7  2003 plot_traj
+-rwsr-sr-x    1 root     badcint     11709 Nov  7  2003 traj_form
+\end{verbatim}
+(Note these setuid bits are the working version setuid bits as of 8th
+August 2005.  They will make the trajectory model work, but are not
+necessarily the only, or best, values to use.)
+
+The setuid bits can be set using chmod and chown when logged on as
+root.
+
+\section{Outline of calling}
+
+There are two entry points for the trajectory model
+
+\begin{itemize}
+\item setting up a trajectory job using traj\_form.p
+\item plotting a trajectory output file using plot\_traj.p
+\end{itemize}
+
+To browse and download files produced by the trajectory service the
+BADC databrowser is used (though in earlier version there was a
+trajectory specific file browser, called find\_file.p).
+
+\subsection{traj\_form.p}
+
+The CGI script traj\_form.p produces three HTML pages depending on
+how it has been called.
+
+\begin{enumerate}
+\item the trajectory submission form for completion by user to define the
+  trajectory option they want to run with (start date etc.).  This
+  form is produced on the first call to traj\_form.p, and whenever
+  there are errors in user input that need correcting, or when input
+  data files are missing.
+\item the trajectory confirm form that details the trajectory run the user
+  has defined and gives the user a chance to change them.  This form
+  is produced when a trajectory run has been fully and correctly
+  defined by the user and all files needed are present.
+\item the information page that says a trajectory job has been
+  submitted. This page is produced after the user has confirmed they
+  would like to submit the trajectory run.
+\end{enumerate}
+
+In producing the pages some processing goes on behind the scenes, for
+instance, to check consistent input, to check that files are present,
+to log details of the trajectory request etc. On overview of the
+processing for a successful call to the trajectory service is given in
+figure \ref{fig:formsubmission}.
+  Details of the checks are best seen through the pod to the
+Check.pm module.  The checks rely on generating filenames for the
+dataset used to generate the trajectories.  This filename generation
+is done by a series of classes, each class provides functions giving
+information about each dataset.  The interface is given in figure 
+\ref{fig:filetype},
+descriptions of each function can be found in the pod of the
+File\_type.pm module.
+
+\begin{figure}
+\begin{center}
+\epsfxsize=40pc \epsfbox{formsubmission.eps}
+\end{center}
+\caption{Successful user submission of a trajectory job}
+\label{fig:formsubmission}
+\end{figure}
+
+\begin{figure}
+\begin{center}
+\epsfxsize=30pc \epsfbox{filetype.eps}
+\end{center}
+\caption{File type interface}
+\label{fig:filetype}
+\end{figure}
+
+The submission of the job is to a queue.  This prevents blocking of
+the browser while the trajectories are calculated.  The queuing system
+used is generic NQS, unfortunately it looks as though this is no
+longer distributed or supported.  One consequence of this is that
+there is no direct submission of jobs from foehn (the web server
+machine) to mercury (where the trajectories are run).  Jobs are
+submitted to the queue by a ssh from foehn to mercury.  This is not
+great since it adds another point of failure.
+
+After submission to the queue the user is informed of progress via
+e-mail.  The mails are generated by the job created by
+Job::job\_submit.  Failed jobs also generate an e-mail that goes to
+badc support to be forwarded to the trajectory model maintainer.
+
+\subsection{plot\_traj.p}
+
+The CGI script plot\_traj.p deals with producing the form to be
+completed by the user to specify what plots are needed.  It produces
+two variants of basically the same page.  The first time plot\_traj.p
+is called it simply gives the selection boxes to specify the plot.
+On subsequent calls to plot\_traj the actual image asked for will be
+embedded in the form (provided there are no errors).  The image is
+embedded using a HTML $<$IMG$>$ tag where the image is another CGI script
+called plot.idl.  In practice plot.idl has to be wrappered by plot.c
+(and plot.pl) for the sake of setting the relevant environment and setuid.
+
+plot\_traj.p can only deal with one file at a time.  Its main purpose
+it to open the file to see what variables it contains.  The variables
+are then used to determine what plot types are offered to the user.
+
+plot.idl is a idl batch file which sets up the correct idl paths and
+ensures that some needed procedures are compiled.
+It then calls plot\_traj\_cgi.pro.  plot\_traj\_cgi.pro reads and
+decodes the CGI environment (in idl) and passes the decoded form
+parameters onto plot\_traj.pro.  plot\_traj.pro actually does the
+plotting.  Other BADC idl routines are needed by the plotting.  These
+decode the form parameters and are usually stored in the {\tt
+cgi-bin/idl} directory under the WWW server.  This is quite convoluted
+and takes a little getting used to.  The plotting is robust though and
+so it is only necessary to understand all these processes when you
+want to make changes.  Figure \ref{fig:plot_sequence} outlines the
+relationships between the different programs.
+
+\begin{figure}
+\begin{center}
+\epsfxsize=8pc \epsfbox{plot_sequence.eps}
+\end{center}
+\caption{Relationships between plotting programs, note plot\_traj\_cgi.pro and plot\_traj are in the subdirectory idl}
+\label{fig:plot_sequence}
+\end{figure}
+
+
+(On retrospect this could be made simpler, at least, by having plot wrapper a
+Perl cgi script that calls the IDL plot\_traj.pro, it would involve
+fewer files, and the setuid wrapping would look more like the setuid
+wrapping for traj\_form etc.)
+
+For historic reasons the plot\_traj uses a specialized data browser if
+the file path asked for does not exist.  This is called find\_file.p.
+
+\section{Source files and output files}
+
+The source files are found under the relevant dataset directories of
+/badc.  The output files are written to
+/requests/[username]/traj\_service.
+If a trajectory job fails then the output is saved in a file in
+/tmp/trajectory on mercury.  This can then be used to discover the
+source of the error.
+
+\section{Common reasons for fail}
+
+Note these reasons have been taken from memory.  The symptoms may not
+be exactly right.  The lists is a good list of things to check when
+there are problems.
+
+\begin{tabular}{|p{100pt}|p{100pt}|p{100pt}|}
+\hline
+{\bf Symptom} & {\bf Likely cause} & {\bf Check} \\
+\hline
+Fail e-mail & disks with input data have become unmounted on mercury & log file \\
+\hline
+Confirm form freezes & mercury down & ping mercury \\
+\hline
+Confirm form freezes & mercury keys ssh keys invalid for some reason & ssh badc@mercury from foehn \\
+\hline
+ & qsub broken on mercury & from mercury do qsub or qstat \\
+\hline
+Jobs appear to complete  but no mails & mail broken on mercury & test mail on mercury \\
+\hline
+ & /tmp/trajectory deleted on mercury & \\
+\hline
+Server error from first request of traj\_form & changes in core BADC Perl modules that have not been fed through to the trajectory code & talk to Andrew \\
+\hline
+\end{tabular}
+
+\section{Suggested system fail warning system}
+
+Some of the common errors could be avoided by running a set of checks
+as, say, twice daily cron jobs that mail on error.  These could be put
+under the cwrapper program to make consistent with other BADC cron
+jobs that mail information about stderr and stdout
+
+\begin{enumerate}
+\item check disks are mounted on mercury
+\item ssh to mercury as badc from foehn
+\item qsub a simple job on mercury (asynchronous, so may be harder?)
+\end{enumerate}
+
+\section{Suggested Improvements}
+
+\begin{enumerate}
+\item make it easier to add new datasets at the interface level. (replace sub routine source\_class with a hash)
+\item replace NQS with a supported queuing system.
+\item remove plot\_traj use of find\_file and retire find\_file.
+\item replace plot\_traj with a GEOSPLAT version that supports
+trajectories.
+\end{enumerate}
+
+\end{document}

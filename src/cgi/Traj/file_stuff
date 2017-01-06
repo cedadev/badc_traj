@@ -1,0 +1,82 @@
+#!/usr/bin/perl -w
+
+use lib ("..");
+use Time::Local;
+
+use Traj::ECMWF25P;
+use Traj::Message;
+
+use strict;
+
+my $source="Traj::ECMWF25P";
+my $file;
+my $sdate=timelocal(0,0,00,01,02,1994);
+my @files=chk_files($sdate,1,'backward',2,48,$source);
+
+foreach $file (@files) {
+    print "$file\n";
+}
+
+foreach my $error (@Message::Error) {
+    print "$error\n";
+} 
+
+exit;
+
+sub chk_files{
+#
+# Purpose: Check for the exsistance of the files
+
+    my ($date,$days,$dir,$release_no,$release_freq,$source)=@_;
+    my $local_error=0;
+    my $file_t=new $source;
+    @files=&make_files($date,$days,$dir,$release_no,$release_freq,$file_t);
+    foreach my $file (@files) {
+	unless ( -e $file) {
+	    error("Wind file $file does not exist.".
+                  "  Please inform the BADC.");
+	    $local_error++;
+	 } else {
+	     unless (-r $file) {
+		 error ("Wind file $file is not readable.  ".
+                         "Please inform the BADC");
+		 $local_error++;
+	     }
+	 }
+    }
+    $local_error+=$file_t->spec_check(@files);
+    return $local_error==0 ? @files : undef;
+}
+
+sub make_files {
+    my ($date,$days,$direction,$release_no,$release_freq,$file)=@_;
+    my (@date,$time);
+    my $tuv=$file->dtuv();
+    my $srel_freq=$release_freq*3600.;         # in seconds
+    my $sdays=$days*86400.;                    # seconds
+    my $tot=$sdays+($release_no-1)*$srel_freq; # seconds
+    $tuv*=($direction =~/forward/i ? 1 : -1);
+    for ($time=0 ; abs $time <= $tot; $time+=$tuv) {
+	if (traj_present(abs $time,$sdays,$srel_freq)) {
+           @date=date_str($date+$time);
+	   push @files, $file->name(@date);
+       }
+    }
+    return @files;
+}
+
+sub traj_present {
+   my ($time, $len, $freq)=@_;
+   return ($freq == 0 or ($time%$freq) <= $len);
+}
+
+#
+# Convert the date in unix seconds into an array (year, month, day, hour)
+sub date_str{
+    my ($date)=@_;
+    my @date=(localtime $date)[2...5];
+    $date[2]++;
+    $date[3]+=1900;
+    @date=reverse @date;
+    return @date;
+}

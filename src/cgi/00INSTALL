@@ -1,0 +1,27 @@
+Installation for the CGI part of the trajectory service.
+
+As root, type:
+
+    make install
+
+This will install to /var/www/badc_site/cgi-bin/trajectory_test
+If the directory already exists, it will fail, so remove the target
+directory and try again.
+
+Test it out in web browser at
+
+    http://badc.nerc.ac.uk/cgi-bin/trajectory_test/traj_form
+
+When you are happy, clear out the live directory which is
+/var/www/badc_site/cgi-bin/trajectory
+
+and then type
+
+    make install CGI_DIR=/cgi-bin/trajectory
+
+and test it at
+    http://badc.nerc.ac.uk/cgi-bin/trajectory/traj_form
+
+Please do not "correct" the Makefile in subversion to point directly to
+the live directory.  This will ensure that nobody will overwrite the live
+directory without first reading these instructions.

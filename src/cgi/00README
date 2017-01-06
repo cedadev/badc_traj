@@ -1,0 +1,21 @@
+CGI directory for the trajectory interface
+
+find_file.c - c wrapper to find_file.pl
+find_file.pl - finding the output from trajectory runs - replaced with
+              the data browser (rm and cvs remove)
+idl         - directory containing some plotting code
+nc2nasa.c   - c wrapper to nc2nasa.pl
+nc2nasa.pl   - convert netcdf files to NASA ames file
+nc2www.c    - c wrapper to nc2www.pl
+nc2www.pl    - add content type to netcdf for www download
+plot.c      - wrapper to plot.pl
+plot.pl     - set environ form plot.idl
+plot.idl    - a batch file that calls the idl plotting
+plot_traj.c - c wrapper to plot_traj.pl
+plot_traj.pl - CGI form for plotting trajectories (perl) the form calls
+              plot
+Traj        - directory containing support modules for the submission form
+traj_form.c - c wrapper for traj_form.pl
+traj_form.pl - CGI trajectory submission form (perl) 
+
+00INSTALL   - Installation instructions

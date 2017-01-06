@@ -1,0 +1,338 @@
+#!/usr/bin/perl -w
+#
+# Purpose:  Create the initial data for a trajectory run in netcdf format
+# Method:   parse the arguments, create the initial traj points or
+#           read from an ascii file, and write output
+# JAK March 99. 
+#
+=pod 
+
+=head1 NAME 
+
+ini_traj
+
+=head1 SYNOPSIS
+
+ini_traj  -lon lonlist -lat latlist -lev levlist -o outputfilename [-h] [-p] [-theta] [-r radius units] [-f inputfilename]
+
+Create a set of initial conditions (points) for trajectories.  Output
+is to a netcdf file.
+
+ -lon lonlist space seperated list of longitudes
+ -lat latlist space seperated list of latitudes
+ -lev levlist space seperated list of levels
+ -o outputfilename path of output file
+ -p use to specify that levels define a set of levels in a profile
+ -theta levels are potential temperature rather than pressure
+ -r radius units initialise set of parcels at radius distance from central parcel.  Units can be km, m, or deg.
+ -f inputfilename (not implemented)
+ -h print help message
+
+
+=cut
+
+#
+# 1.1 Parse the command line arguments
+unless ($ARGV[0]) {&usage}
+while ($arg=shift @ARGV) {
+  CASE: {
+     $arg=~/-h/ && do {     # help flag
+       &usage;
+       last CASE;
+     };
+     $arg=~/-p/ && do {     # profile flag
+       $profile=1;
+       last CASE;
+     };
+     $arg=~/-theta/ && do { # levels are theta levels
+       $theta=1;
+       last CASE;
+     };
+     $arg=~/-r/ && do {     # cluster radius follows
+       $radius=shift @ARGV;
+       $radius=~m/^-?\d+\.?\d*|\.\d+/ or &usage;
+       last CASE;
+     };
+     $arg=~/-f/ && do {     # data file name follows
+       $file=shift @ARGV;
+       $file=~/^-/ and &usage;
+       last CASE;
+     };
+     $arg=~/-lon/ && do {   # longitudes follow
+       @lons=&get_arg_digits;
+       @lons or &usage;
+       last CASE;
+     };
+     $arg=~/-lat/ && do {   # latitudes follow
+       @lats=&get_arg_digits;
+       @lats or &usage;
+       last CASE;
+     };
+     $arg=~/-lev/ && do {   # levels follow
+       @levs=&get_arg_digits;
+       @levs or &usage;
+       last CASE;
+     };
+     $arg eq "-o" and do {  #output file name
+	 if ($ofile) {
+	     &usage;
+	 }
+	 $ofile=shift;
+	 last CASE;
+     };
+     $arg=~/-\w/ && do {    # unknown -option
+	 &usage;
+         last CASE;
+     };
+     if ($ofile) {          # output file name
+	 &usage;
+     } else {
+	 $ofile=$arg;
+     }
+   }
+}
+
+#
+# 1.2 Check Command line arguments
+$ofile ? print "Output will be written to $ofile\n" : &usage;
+$profile and print "Profiles will be generated\n";
+$radius and &check_radius ? print "Cluster radius: $radius\n" :
+                            die "radius unit not recognised\n";
+$levels=$theta ? "theta" : "pressure";
+print "Levels are taken as $levels\n" ;
+if ($file) {
+  if (@lons or @lats or @levs) {
+    warn "Both file and coordinate points specified: using file data\n";
+  }
+  read_file($file);
+}
+&check_points or die "Inconsistent number of coordinates given\n";
+
+#
+# 2. Create the points
+$theta or @levs=mult_arr_by_const(100.,@levs);
+$profile and make_traj::profiles(\@lons,\@lats,\@levs);
+$radius and make_traj::clusters($radius,\@lons,\@lats,\@levs);
+make_traj::range(\@lons,\@lats);
+
+#
+# 3. Output the points
+&write_netcdf;
+exit 0;
+
+#
+# sub check_radius
+# Purpose: check the radius has a valid unit and convert to degrees
+sub check_radius {
+  CASE: {
+      $radius =~ s/km$//i && do {
+	my $radear=6371.;           # radius earth in kilometers
+	$radius=$radius/$radear;     # conversion to radians
+	$radius*=(180./3.1415927);   # conversion to degrees
+	last CASE;
+      };
+      $radius =~ s/m$//i && do {
+	my $radear=6371000.;           # radius earth in kilometers
+	$radius=$radius/$radear;     # conversion to radians
+	$radius*=(180./3.1415927);   # conversion to degrees
+	last CASE;
+      };
+      last CASE if $radius =~ s/deg$//i;
+      last CASE if $radius =~ m/^-?\d+\.?\d*|\.\d+$/;
+      $radius=undef;
+    }
+    return $radius
+}
+
+#
+# sub check_points
+# Purpose: check the same number of lons lats (and levs) have been given
+sub check_points{
+  my $lon=@lons;
+  my $lat=@lats;
+  my $lev=@levs;
+  return  $lon==0 || $lat == 0 || $lev == 0 ? 
+          undef : ($profile ? $lon == $lat : $lon==$lat && $lon == $lev)
+}
+
+#
+# sub get_arg_digits
+# Purpose: retrieves list of decimal digits from the argument list
+#          returns undef if there are no decimcal digits or end of arg list
+sub get_arg_digits {
+  my @vals=();
+  while (($arg=shift @ARGV) || $arg =~/0/ and $arg =~ /^-?\d+\.?\d*|\.\d+$/) {
+    $vals[++$#vals]=$arg;
+  }
+  unshift @ARGV, $arg;
+  return @vals
+}
+
+#
+# sub mult_arr_by_const
+# Purpose: multiply an array by a constant value
+sub mult_arr_by_const{
+  my ($z,@arr)=@_;
+  foreach $element (@arr){
+    $element*=$z;}
+  return @arr;
+}
+#
+# sub read_file
+# Purpose: reads the longitude, latitude, level coordinates
+#          from a file
+sub read_file {
+  my $file=shift @_;
+  warn "Dummy sub read_file called\n";
+}
+
+#
+# sub usage
+# Purpose: print message for usage and exit
+sub usage{
+  print "Usage: \n";
+  print $0, " [-p] [-r nkm/deg] [-theta]",
+#              " [-f file]",
+            " [-lon lon1 lon2 ... ",
+            "-lat lat1 lat2 ... -lev lev1 lev2 [lev3] ...] ",
+            " netcdf_file\n\n";
+  print "-p profiles wanted \n";
+  print "-r n cluster radius in km or degrees (default=degrees) \n";
+  print "-theta levels are in theta \n";
+#    print "-f file data file for longitude, latitude, level points\n";
+  print "-lon list of longitudes (degrees)\n";
+  print "-lat list of latitudes (degrees)\n";
+  print "-lev list of levels (in hPa or K)\n";
+  print "netcdf_file output file name\n\n";
+  exit 1
+}
+
+#
+# sub write_netcdf
+# Purpose: write a netcdf file for the trajectories
+sub write_netcdf {
+  use NetCDF;
+  my $today=localtime(time);
+  my $history="Initial data created by $0 on $today";
+  my $title="Trajectory file";
+  my $undef=-999.999;
+  my $ipar=@lons;
+  
+  (my $ncid=NetCDF::create($ofile,NetCDF::CLOBBER)) < 0 and
+    die("$0: cannot create NetCDF file\n");
+  NetCDF::attput($ncid,NetCDF::GLOBAL,"history",NetCDF::CHAR,$title)
+    < 0 and die("$0: cannot write global variable: title\n");
+  NetCDF::attput($ncid,NetCDF::GLOBAL,"history",NetCDF::CHAR,$history)
+    < 0 and die("$0: cannot write global variable: history\n");
+  my $d_ipar=NetCDF::dimdef($ncid,"parcel",$ipar);
+  my $d_time=NetCDF::dimdef($ncid,"time",NetCDF::UNLIMITED);
+  my $v_time=NetCDF::vardef($ncid,"time",NetCDF::FLOAT,[$d_time]);
+  my $v_lons=NetCDF::vardef($ncid,"lon",NetCDF::FLOAT,[$d_time,$d_ipar]);
+  my $v_lats=NetCDF::vardef($ncid,"lat",NetCDF::FLOAT,[$d_time,$d_ipar]);
+  my $v_levs=NetCDF::vardef($ncid,"lev",NetCDF::FLOAT,[$d_time,$d_ipar]);
+  NetCDF::attput($ncid,$v_time,"units",NetCDF::CHAR,"seconds");
+  NetCDF::attput($ncid,$v_time,"long_name",NetCDF::CHAR,"time");
+  NetCDF::attput($ncid,$v_lons,"units",NetCDF::CHAR,"degrees east");
+  NetCDF::attput($ncid,$v_lons,"long_name",NetCDF::CHAR,"longitude");
+  NetCDF::attput($ncid,$v_lons,"missing_value",NetCDF::FLOAT,$undef);
+  NetCDF::attput($ncid,$v_lats,"units",NetCDF::CHAR,"degress north");
+  NetCDF::attput($ncid,$v_lats,"long_name",NetCDF::CHAR,"latitude");
+  NetCDF::attput($ncid,$v_lats,"missing_value",NetCDF::FLOAT,$undef);
+  if ($levels eq "theta") {
+    NetCDF::attput($ncid,$v_levs,"units",NetCDF::CHAR,"Kelvin");
+    NetCDF::attput($ncid,$v_levs,"long_name",NetCDF::CHAR,
+                                                 "potential temperature");
+  } else {
+    NetCDF::attput($ncid,$v_levs,"units",NetCDF::CHAR,"Pascals");
+    NetCDF::attput($ncid,$v_levs,"long_name",NetCDF::CHAR,"pressure");
+  }
+  NetCDF::attput($ncid,$v_levs,"missing_value",NetCDF::FLOAT,$undef);
+  NetCDF::endef($ncid);
+  NetCDF::varput($ncid,$v_time,[0],[1],[0.]);
+  NetCDF::varput($ncid,$v_lons,[0,0],[1,$ipar],\@lons);
+  NetCDF::varput($ncid,$v_lats,[0,0],[1,$ipar],\@lats);
+  NetCDF::varput($ncid,$v_levs,[0,0],[1,$ipar],\@levs);
+  NetCDF::close($ncid);
+  return 1
+}
+
+#
+# package make_traj
+# Purpose: provide routines for making the trajectory points
+# Comments: package is not neccessary at this time.  Its used for possible
+#           future portability
+#  JAK March 99.
+#
+package make_traj;
+
+#
+# sub clusters
+# Purpose: makes a set of clusters around a point
+# Method:  simple diamond cluster with certain radius
+sub clusters {
+  my ($angle,$rlon,$rlat,$rlev)=@_;
+
+  $ipoint=@$rlon;
+  $iclust=5;                  # default to 4 for this algorithm
+  $tmp[$ipoint*$iclust-1]=0 ; # predefine space (time saver?)
+  for ($j=0 ; $j<$ipoint ; $j++) {
+    @tmp[$j*$iclust..($j+1)*$iclust-1]=($rlev->[$j])x$iclust;
+  }
+  @$rlev=@tmp;
+  for ($j=0 ; $j<$ipoint ; $j++) {
+    @tmp[$j*$iclust..($j+1)*$iclust-1]=
+           ($rlon->[$j]-$angle,$rlon->[$j],$rlon->[$j],$rlon->[$j],$rlon->[$j]+$angle);
+  }
+  @$rlon=@tmp;
+  for ($j=0 ; $j<$ipoint ; $j++) {
+    @tmp[$j*$iclust..($j+1)*$iclust-1]=
+           ($rlat->[$j],$rlat->[$j]-$angle,$rlat->[$j],$rlat->[$j]+$angle,$rlat->[$j]);
+  }
+  @$rlat=@tmp;
+  return 1
+}
+
+#
+# sub profiles
+# Purpose: make a set of trajectory profiles
+sub profiles {
+  my ($rlon, $rlat, $rlev) = @_;
+  $ipoint=@$rlon;
+  $ilev=@$rlev;
+  $tmp[$ipoint*$ilev-1]=0;  # predefine enough space
+  for ($j=0 ; $j<$ipoint ; $j++) {
+    @tmp[$j*$ilev..($j+1)*$ilev-1]=($rlon->[$j])x$ilev;
+  }
+  @$rlon=@tmp;
+  for ($j=0 ; $j<$ipoint ; $j++) {
+    @tmp[$j*$ilev..($j+1)*$ilev-1]=($rlat->[$j])x$ilev;
+  }
+  @$rlat=@tmp;
+  for ($j=0 ; $j<$ipoint ; $j++) {
+    @tmp[$j*$ilev..($j+1)*$ilev-1]=@$rlev;
+  }
+  @$rlev=@tmp;
+  return 1
+}
+
+#
+# sub range
+# Purpose: brings the longitudes and latitudes into range
+sub range {
+  my ($rlon,$rlat)=@_;
+  for ($j=0 ; $j < @$rlon ; $j++) {
+    if ($rlat->[$j] > 90.) {
+      $rlat->[$j]=180.-$rlat->[$j];
+      $rlon->[$j]+=180.;
+    } elsif ($rlat->[$j] <-90.) {
+      $rlat->[$j]+=180.;
+      $rlon->[$j]+=180.;
+    }
+    if ($rlon->[$j] < -180.) {
+      $rlon->[$j]+=360.;
+    } elsif ($rlon->[$j] > 180.) {
+      $rlon->[$j]-=360.;
+    }
+  }
+  return 1
+}

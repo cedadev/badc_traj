@@ -1,0 +1,170 @@
+\documentclass[a4paper]{article}
+
+\title{Trajectory Model Code}
+\author{Jamie Kettleborough}
+
+\begin{document}
+\maketitle
+
+\section{Introduction}
+
+This document outlines the numerical method and code used by the BADC
+trajectory model.  It does not outline the details of the CGI
+interface.
+These are given in separate document.
+
+\section{Numerical methods}
+
+\subsection{Forward Time Stepping}
+The time stepping of the trajectory positions is performed by a fourth
+order Runge Kutta method.  Details of the Runge Kutta method can be
+found in standard texts such as `Numerical Recipes'.  Stepping the
+trajectories forward in time is simply solving the equation
+\begin{displaymath}
+ \frac{d\bf{x}}{dt}=\bf{u}(\bf{x},t)
+\end{displaymath}
+where $\bf{x}$ are the parcel positions, $\bf{u}$ are the parcel
+velocities, and $t$ is time.
+
+The method requires interpolation of the forcing wind
+fields onto the parcel positions.  The Runge Kutta requires the
+velocities at three time levels during each time step: the current
+time ($t$), halfway through the time step ($t+\frac{\delta t}{2}$), and
+at the end of the time step ($t+\delta t$).  Depending on the relative
+number of parcels being advected and the number of grid points on the
+wind forcing fields it can be more efficient to interpolate in time
+first or in space first.  When interpolating in time first
+interpolation has to be done at all the forcing field grid points.
+This can be more efficient, however, since the wind from the end of
+one time step ($t+\delta t$) can be carried over to become the gridded
+wind at the beginning of the next time step ($t$).  The code, as
+written, supports both interpolation in time first or interpolation in
+space first.  (In retrospect the way that this is supported in the
+code is not very well implemented and complicates the code
+unnecessarily.)
+
+The main time stepping routine is called {\tt runge\_kutta}.
+
+Some important relevant variables are
+
+\begin{tabular}{|l|l|}
+\hline
+Variable Name & Meaning \\
+\hline
+{\tt velt} & Gridded wind at current time step \\
+{\tt velthdt} & Gridded wind at centre of current time step \\
+{\tt veltdt} & Gridded wind at end of current time step \\
+{\tt ltfirst} & Switch time interpolation first on or off \\
+\hline
+\end{tabular}
+
+\subsection{Spherical Geometry}
+The advection is done on a sphere (so the geometry of the surfaces of
+constant height variable are approximated by spheres).  This is
+achieved by using Cartesian coordinates $(x,y,z)$ on a sphere.  The
+local vertical coordinate (pressure, or potential temperature) is
+supported by a fourth dimension ($zhm$).  The gridded winds are given
+on a latitude-longitude grid and with eastward and northward
+components.  The Cartesian parcel positions have to be transformed
+into latitude-longitude coordinates, and the winds then transformed
+into Cartesian components. During the time stepping the Cartesian
+coordinate of the parcels are renormalised to keep them on the surface
+of a unit sphere.
+
+Relevant routines include
+
+\begin{tabular}{|l|p{15pc}|}
+\hline
+Routine & Purpose \\
+\hline
+{\tt latlon\_from\_cartesians} & convert Cartesian parcel positions in
+lat-lon coordinates \\
+{\tt find\_parcel\_cartesians} & convert lat-lon coordinates of parcels
+to Cartesian \\
+{\tt uvw} & part of this routine converts Eastward/Northward winds to
+Cartesian coordinates\\
+{\tt adjust} & remornamlise the Cartesian parcel positions to lie on a
+unit sphere \\
+\hline
+\end{tabular}
+
+\subsection{Time interpolation}
+Simple linear interpolation is used to get the velocities onto the
+current time.  The routine {\tt time\_interp} performs the time
+interpolation.
+
+\subsection{Space interpolation}
+The space interpolation is also performed by linear interpolation.
+The routine {\tt uvw} is responsible for the interpolation (as well as
+transforming the interpolated winds into Cartesian components).  {\tt
+  uvw} calls helper routines:
+
+\begin{tabular}{|l|p{15pc}|}
+\hline
+Routine & Purpose \\
+\hline
+{\tt get\_horizontal\_weights } & Calculate the interpolation weights
+for the horizontal direction \\
+{\tt find\_vert} & find the location of the parcels on the vertical
+grid and calculate vertical interpolation weight\\
+{\tt interpolate} & built in IDL routine for linear interpolation\\
+\hline
+\end{tabular}
+
+\subsection{Vertical Coordinates}
+The trajectory model supports parcel vertical coordinates of hybrid
+pressure or potential temperature.  When the vertical
+coordinate of the parcel positions is the same as that of the wind
+field then the wind grid information simply carries the one
+dimensional level information.  If the vertical coordinate of the
+parcel positions is not the same as those of the gridded wind field
+then there has be be a way of calculating the the gridded values of
+the parcel vertical coordinate from the gridded fields, this gridded
+vertical coordinate is then carried around as the three dimensional
+level information.  This has to be done, for instance, when the parcel
+vertical coordinate is potential temperate, but the gridded wind
+vertical coordinate is pressure, or hybrid sigma-pressure.
+
+\subsection{Undefined points}
+Parcels that are initialised close to the boundaries of the wind
+domain may be advected out of the domain.  These parcels are set as
+undefined.  Within the code a list of undefined parcels is carried
+around as the variable {\tt in\_range}.  Only parcels that are defined
+are advected.  Carrying the {\tt in\_range} array around probably is
+not the best way to account of for undefined parcels.  Simply setting
+the coordinates as $-999$ may be better.
+
+\section{Outline}
+An outline of the steps made by the code is as follows:
+
+\begin{enumerate}
+\item initialise parcel positions (external to main model)
+\item set inputs
+\item initialise model grid (defines grid wind files are present on)
+\item read first wind file
+\item loop around time
+\begin{enumerate}
+\item read and swap winds if needed
+\item new release if needed (include interpolation of temperature etc)
+\item perform Runge-Kutta step
+\item increment time step
+\item output on this time step if needed.
+\item delete an old release if needed.
+\end{enumerate}
+\item close any unclosed output files
+\end{enumerate}
+
+\section{Multiple Releases}
+Many users want to run the same trajectories for a number of different
+times, say to build up a climatology of air origins at their observing
+station.  To help with this kind of study trajectories can be run as a
+set of multiple release trajectories.  In this case trajectories are
+run with identical spatial starting positions for a set of times.
+
+\section{Time step and date handling}
+The trajectory model uses a set of routines, such as {\tt dt\_add}
+that  were available at IDL 5.2, but which have since been
+removed.  They have to be made available (in Traj:Job.pm) in order to
+run the trajectory model.
+
+\end{document}

@@ -1,0 +1,140 @@
+#!/usr/bin/perl
+#
+# Purpose: Find set of files
+#
+#   30/07/10 ASH The function of this script has largely been taken over by the data browser. However, it is still used to display 
+#   some 'precalculated trajectories' for PUMA and PRIME.
+#
+# History:
+#
+#  14-Oct-2003 ASH Set user to 'root' to get around validation problem
+#  25-Jan-2006 ASH Added PATH definition to get around taint check problem in weblogon.pm
+#
+use BADCLOCAL::Paths;
+use lib "$BADCLOCAL::Paths::PERLLIB";
+use lib "$BADCLOCAL::Paths::LOCAL_PERLLIB";
+use BADC::LocalDefs;
+use BADC::Setup;
+
+
+use NDG::Security::Client;
+use NDG::Security::Weblogon;
+
+use CGI;
+
+$ENV{PATH} = "/bin";  # ASH Added to get around taint check problem 
+
+$CGI_PATH="@@CGI_DIR@@";
+
+$< = (getpwnam("root"))[2];    #Added by ASH 14/10/03 to get validate to work 
+
+CGI::ReadParse();
+$group='traj';
+
+NDG::Security::Weblogon::weblogon(mustLogin=>"y");
+my @roles = NDG::Security::Weblogon::roles();
+$user = NDG::Security::Weblogon::username();
+
+if (grep /^${group}$/, @roles) {
+    get_files();
+    }
+exit 0;
+
+sub get_files {
+
+$no_message=($user eq "prime" or $user eq "puma"); # tidier?
+$precalc=$ENV{PATH_INFO};
+$precalc=~tr/A-Z/a-z/;
+if ($precalc) {
+    $base="/badc/ecmwf-trj/data/$precalc";
+} else {
+    $base="/cache/trajectory/$user";
+}
+
+@files=find_files($base,".nc");
+@files=strip_base($base."/",@files);
+
+    print <<"EOF";  # print messages for no files or >1 file
+Content-Type: text/html
+
+<HTML>
+<HEAD>
+<TITLE>BADC Trajectory Service - Output files</TITLE>
+</HEAD>
+<BODY BGCOLOR="#FFFFFF">
+<H1><IMG SRC="/graphics/logos/badc_small_logo.gif" WIDTH="150" HEIGHT="60"
+ALIGN="RIGHT" ALT="BADC Logo" BORDER="0">Atmospheric Trajectories<BR clear=all></H1>
+<HR>
+EOF
+
+    if (@files) {   # print out all the possible files
+        unless ($no_message or $precalc) {
+          print <<"EOF";
+<P>The files produced by the BADC trajectory service will
+be deleted 30 days after their creation time.  Please download
+the files to your local disk to avoid loosing the data.
+</P>
+<HR>
+EOF
+        }
+	print "The following trajectory files can be found: \n";
+	print "<TABLE>\n";
+	foreach $file (@files) {
+            if ($precalc) {$file="$precalc/$file";} # messy
+	    print "<TR>
+               <TD><A HREF='$CGI_PATH/plot_traj/$file'>Plot</A></TD>
+               <TD><A HREF='$CGI_PATH/nc2www/$file'>Download NetCDF (binary)</A></TD>
+               <TD><A HREF='$CGI_PATH/nc2nasa/$file'>View NASA Ames (ASCII)</A></TD>
+               <TD>",$file,"</TD></TH>\n";
+	}
+	print "</TABLE>\n";
+    } else {            # error message if no files are found
+        if ($precalc) {
+           print <<"EOF";
+Sorry, there are no trajectory files for $precalc.
+EOF
+        } else {
+	   print <<"EOF";
+Sorry there are no trajectory files.  This probably means that any 
+trajectory runs you did have been deleted because they are greater
+than 1 month old.
+EOF
+        }
+    }
+    print <<"EOF";
+<HR>
+<EM>Please report any problems with this page to:</EM>
+<ADDRESS><A HREF="http://www.badc.rl.ac.uk/who/index.html">
+BADC Support
+</A>.
+</BODY>
+</HTML>
+EOF
+
+exit 0;
+}
+sub find_files {
+    my $afile=shift;
+    my $asuff=shift;
+    my (@list, @return,$file);
+    if (-d $afile) {
+	opendir DIR, $afile;
+	@list=grep !/^\./, readdir DIR;  # don't want hidden files
+	closedir DIR;
+	foreach $file (sort @list) {
+	    push @return, find_files($afile."/".$file,$asuff);
+	}
+    } else {
+	($afile =~ m!.*$asuff$!) and push @return, $afile;
+    }
+    return @return;
+}
+
+sub strip_base {
+    my $base=shift;
+    my @files=@_;
+    foreach $file (@files) {
+	$file=~s/^$base//;
+    }
+    return @files;
+}
